@@ -199,11 +199,11 @@ def RM_Asian(n, N, rho, K, S0, T, r, I_market, m, sigma_0):
     alpha_0 = 2/(K+S0)
 
     sigma_estim = np.empty((n,))
-    sigma_estim[0] = sigma_0
+    sigma_cur = sigma_0
+    sigma_estim[0] = sigma_cur
     
     for i in range(1, n):
         alpha_n = alpha_0 / i ** rho
-        sigma_cur = sigma_estim[i - 1]
 
         # Calculate Jhat
         simulations = Simulate_Stock_Price(S0, sigma_cur, r, T, m, N)
@@ -211,7 +211,8 @@ def RM_Asian(n, N, rho, K, S0, T, r, I_market, m, sigma_0):
         payoffs = np.exp(-r*T) * np.maximum(K - avg_stock_prices, 0)
         Jhat = np.mean(payoffs) - I_market
         
-        sigma_estim[i] = sigma_cur - alpha_n * Jhat
+        sigma_cur = sigma_cur - alpha_n * Jhat
+        sigma_estim[i] = sigma_cur
 
     return sigma_estim
 
@@ -279,7 +280,6 @@ def RM_Asian_with_Stopping(N, rho, K, S0, T, r, I_market, m,sigma_0,Max_iteratio
                 break
         i += 1
         
-    print(f'Stopped at iteration n = {i}, where sigma_n = {sigma_cur}')
     return sigma_estim,i
 
 def RM_Asian_with_IS_and_Stopping(N, rho, K, S0, T, r, r_tilde, I_market, m,sigma_0, Max_iteration = 10**6,window_size=1000,tol1=10**(-3),tol2=10**(-2)):
@@ -318,20 +318,15 @@ def RM_Asian_with_IS_and_Stopping(N, rho, K, S0, T, r, r_tilde, I_market, m,sigm
             return sigma_estim,i       
         i += 1
 
-    print(f'Stopped at iteration n = {i}, where sigma_n = {sigma_cur}')
+    # print(f'Stopped at iteration n = {i}, where sigma_n = {sigma_cur}')
     return sigma_estim, i
 
 def RM_Asian_with_IS(n, N, rho, K, S0, T, r, r_tilde, I_market, m, sigma_0):
-    if rho > 0.5:
-        sigma_0,i = Sign_changing(K, S0, T, r, I_market, m, sigma_0)
-    else:
-        i=1
-
     alpha_0 = 2/(K+S0)
     sigma_estim = np.empty((n,))
     sigma_cur = sigma_0
-    
-    while i < n:
+    sigma_estim[0] = sigma_cur
+    for i in range(1,n):
         alpha_n = alpha_0 / i ** rho
 
         # Calculate Jhat with IS
@@ -343,7 +338,6 @@ def RM_Asian_with_IS(n, N, rho, K, S0, T, r, r_tilde, I_market, m, sigma_0):
 
         sigma_cur -= alpha_n * Jhat
         sigma_estim[i] = sigma_cur
-        i += 1
 
     return sigma_estim
 
@@ -414,22 +408,17 @@ def RM_Asian_with_IS_opt_and_stopping(N, rho, K, S0, T, r, I_market, m, sigma_0,
             if abs(mean_value) < tol1 and abs(Jhat) < tol2:
                 break
         i += 1
-    print(f'Stopped at iteration n = {i}, where sigma_n = {sigma_cur}')
+    # print(f'Stopped at iteration n = {i}, where sigma_n = {sigma_cur}')
     return sigma_estim, i
 
-def RM_Asian_with_IS_opt(n, N, rho, K, S0, T, r, I_market, m,r_opt):
-    if rho > 0.5:
-        sigma_0,i = Sign_changing(K, S0, T, r, I_market, m, sigma_0)
-    else:
-        i=1
-
+def RM_Asian_with_IS_opt(n, N, rho, K, S0, T, r, I_market, m, sigma_0, r_opt):
     sigma_0 = 1
     alpha_0 = 2/(K+S0)
 
     sigma_estim = np.empty((n,))
     sigma_cur = sigma_0
-    
-    while i < n:
+    sigma_estim[0] = sigma_cur
+    for i in range(1,n):
         alpha_n = alpha_0 / i ** rho
 
         # Calculate Jhat with IS
@@ -442,6 +431,5 @@ def RM_Asian_with_IS_opt(n, N, rho, K, S0, T, r, I_market, m,r_opt):
 
         sigma_cur = sigma_cur - alpha_n * Jhat
         sigma_estim[i] = sigma_cur
-        i +=1
 
     return sigma_estim
