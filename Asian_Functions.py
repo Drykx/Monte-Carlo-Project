@@ -215,7 +215,7 @@ def RM_Asian(n, N, rho, K, S0, T, r, I_market, m, sigma_0):
 
     return sigma_estim
 
-def RM_Asian_with_Stopping(N, rho, K, S0, T, r, I_market, m,sigma_0,Max_iteration = 10**6,window_size=1000,tol1=10**(-3),tol2=10**(-4)):
+def RM_Asian_with_Stopping(N, rho, K, S0, T, r, I_market, m,sigma_0,Max_iteration = 10**6,window_size=1000,tol1=10**(-3),tol2=10**(-2)):
     """This function returns the sequence sigma_n and J_n for the option price to equal to market price using a variant of the Robbins-Monro algorithm
     Parameters
     ----------
@@ -257,7 +257,7 @@ def RM_Asian_with_Stopping(N, rho, K, S0, T, r, I_market, m,sigma_0,Max_iteratio
     sigma_estim = deque([sigma_0])
     J_estim = deque([])
         
-    while True:
+    while i < Max_iteration:
         alpha_n = alpha_0 / i ** rho
 
         # Calculate Jhat
@@ -277,74 +277,77 @@ def RM_Asian_with_Stopping(N, rho, K, S0, T, r, I_market, m,sigma_0,Max_iteratio
             mean_value = mean_value + (Jhat - removed_value) / window_size
             if abs(mean_value) < tol1 and abs(Jhat) < tol2:
                 break
-        if i == Max_iteration:
-            return sigma_estim,i
         i += 1
         
     print(f'Stopped at iteration n = {i}, where sigma_n = {sigma_cur}')
     return sigma_estim,i
 
-
-def RM_Asian_with_IS(n, N, rho, K, S0, T, r, r_tilde, I_market, m,sigma_0, Max_iteration = 10**6,window_size=1000,tol1=10**(-3),tol2=10**(-4)):
+def RM_Asian_with_IS_and_Stopping(N, rho, K, S0, T, r, r_tilde, I_market, m,sigma_0, Max_iteration = 10**6,window_size=1000,tol1=10**(-3),tol2=10**(-2)):
+    if rho > 0.5:
+        sigma_0,i = Sign_changing(K, S0, T, r, I_market, m, sigma_0)
+    else:
+        i=1
 
     alpha_0 = 2/(K+S0)
-        
-    if n:
-        sigma_estim = np.empty((n,))
-        sigma_cur = sigma_0
-        
-        for i in range(1, n):
-            alpha_n = alpha_0 / i ** rho
+    sigma_cur = sigma_0
+    sigma_estim = deque([sigma_0])
+    J_estim = deque([])
 
-            # Calculate Jhat with IS
-            simulations = Simulate_Stock_Price(S0, sigma_cur, r_tilde, T, m, N)
-            likelihood_ratios = w(simulations[:, -1], S0, sigma_cur, r, r_tilde, T)
-            avg_stock_prices = np.mean(simulations, axis=1)
-            payoffs = np.exp(-r*T) * np.maximum(K - avg_stock_prices, 0)
-            Jhat = np.mean(np.multiply(payoffs, likelihood_ratios)) - I_market
+    while i < Max_iteration:
+        alpha_n = alpha_0 / i ** rho
 
-            sigma_cur -= alpha_n * Jhat
-            sigma_estim[i] = sigma_cur
+        # Calculate Jhat
+        simulations = Simulate_Stock_Price(S0, sigma_cur, r_tilde, T, m, N)
+        likelihood_ratios = w(simulations[:, -1], S0, sigma_cur, r, r_tilde, T)
+        avg_stock_prices = np.mean(simulations, axis=1)
+        payoffs = np.exp(-r*T) * np.maximum(K - avg_stock_prices, 0)
+        Jhat = np.mean(np.multiply(payoffs, likelihood_ratios)) - I_market
+        sigma_cur -= alpha_n * Jhat
+        sigma_estim.append(sigma_cur)
+        J_estim.append(Jhat)
+
+        # Stopping Criterion
+        if i == window_size:
+            mean_value = np.mean(J_estim)
+        if i > window_size:
+            removed_value = J_estim.popleft()
+            mean_value = mean_value + (Jhat - removed_value) / window_size
+            if abs(mean_value) < tol1 and abs(Jhat) < tol2:
+                break
+        if i == Max_iteration:
+            return sigma_estim,i       
+        i += 1
+
+    print(f'Stopped at iteration n = {i}, where sigma_n = {sigma_cur}')
+    return sigma_estim, i
+
+def RM_Asian_with_IS(n, N, rho, K, S0, T, r, r_tilde, I_market, m, sigma_0):
+    if rho > 0.5:
+        sigma_0,i = Sign_changing(K, S0, T, r, I_market, m, sigma_0)
     else:
+        i=1
 
-        if rho > 0.5:
-            sigma_0,i = Sign_changing(K, S0, T, r, I_market, m, sigma_0)
-        else:
-            i=1
+    alpha_0 = 2/(K+S0)
+    sigma_estim = np.empty((n,))
+    sigma_cur = sigma_0
+    
+    while i < n:
+        alpha_n = alpha_0 / i ** rho
 
-        sigma_cur = sigma_0
-        sigma_estim = deque([sigma_0])
-        J_estim = deque([])
+        # Calculate Jhat with IS
+        simulations = Simulate_Stock_Price(S0, sigma_cur, r_tilde, T, m, N)
+        likelihood_ratios = w(simulations[:, -1], S0, sigma_cur, r, r_tilde, T)
+        avg_stock_prices = np.mean(simulations, axis=1)
+        payoffs = np.exp(-r*T) * np.maximum(K - avg_stock_prices, 0)
+        Jhat = np.mean(np.multiply(payoffs, likelihood_ratios)) - I_market
 
-        while True:
-            alpha_n = alpha_0 / i ** rho
+        sigma_cur -= alpha_n * Jhat
+        sigma_estim[i] = sigma_cur
+        i += 1
 
-            # Calculate Jhat
-            simulations = Simulate_Stock_Price(S0, sigma_cur, r_tilde, T, m, N)
-            likelihood_ratios = w(simulations[:, -1], S0, sigma_cur, r, r_tilde, T)
-            avg_stock_prices = np.mean(simulations, axis=1)
-            payoffs = np.exp(-r*T) * np.maximum(K - avg_stock_prices, 0)
-            Jhat = np.mean(np.multiply(payoffs, likelihood_ratios)) - I_market
-            sigma_cur -= alpha_n * Jhat
-            sigma_estim.append(sigma_cur)
-            J_estim.append(Jhat)
+    return sigma_estim
 
-            # Stopping Criterion
-            if i == window_size:
-                mean_value = np.mean(J_estim)
-            if i > window_size:
-                removed_value = J_estim.popleft()
-                mean_value = mean_value + (Jhat - removed_value) / window_size
-                if abs(mean_value) < tol1 and abs(Jhat) < tol2:
-                    break
-            if i == Max_iteration:
-                return sigma_estim,i       
-            i += 1
-
-        print(f'Stopped at iteration n = {i}, where sigma_n = {sigma_cur}')
-    return sigma_estim,i
-
-def find_optimal_r_tilde(sigmas, S0, K, r, T, m, N):
+def get_r_opt(sigmas, S0, K, r, T, m, N):
     def g(eta, sigma, simulations):
         likelihood_ratios = w(simulations[:, -1], S0, sigma, r, eta, T)
         
@@ -353,16 +356,12 @@ def find_optimal_r_tilde(sigmas, S0, K, r, T, m, N):
         variance = np.mean(np.multiply(payoffs_squared, likelihood_ratios))
         return variance
     
-    if type(sigmas) == float:
+    result = np.empty((len(sigmas),))
+    for i, sigma in enumerate(sigmas):
         simulations = Simulate_Stock_Price(S0, sigma, r, T, m, N)
-        return minimize_scalar(g, args=(sigmas,simulations)).x
-    else:
-        result = np.empty((len(sigmas),))
-        for i, sigma in enumerate(sigmas):
-            simulations = Simulate_Stock_Price(S0, sigma, r, T, m, N)
-            result[i] = minimize_scalar(g, args=(sigma,simulations)).x
+        result[i] = minimize_scalar(g, args=(sigma,simulations)).x
 
-        return result
+    return interp1d(sigmas, result, kind='cubic')
 
 class VarianceAnalyzer:
     def __init__(self, window_size):
@@ -381,58 +380,68 @@ class VarianceAnalyzer:
             return None  # Variance is undefined with less than two values
         return np.var(self.values, ddof=1)  # ddof=1 for unbiased variance estimation
 
+def RM_Asian_with_IS_opt_and_stopping(N, rho, K, S0, T, r, I_market, m, sigma_0, r_opt, Max_iteration = 10**6,window_size=1000,tol1=10**(-3),tol2=10**(-2)):
+    if rho > 0.5:
+        sigma_0,i = Sign_changing(K, S0, T, r, I_market, m, sigma_0)
+    else:
+        i=1
+        
+    alpha_0 = 2/(K+S0)
 
-def RM_Asian_with_IS_opt(n, N, rho, K, S0, T, r, I_market, m,sigma_0,sigmas,result):
+    sigma_cur = sigma_0
+    sigma_estim = deque([sigma_0])
+    J_estim = deque([])
+    while i < Max_iteration:
+        alpha_n = alpha_0 / i ** rho
+
+        # Calculate Jhat
+        r_tilde = r_opt(sigma_cur)
+        simulations = Simulate_Stock_Price(S0, sigma_cur, r_tilde, T, m, N)
+        likelihood_ratios = w(simulations[:, -1], S0, sigma_cur, r, r_tilde, T)
+        avg_stock_prices = np.mean(simulations, axis=1)
+        payoffs = np.exp(-r*T) * np.maximum(K - avg_stock_prices, 0)
+        Jhat = np.mean(np.multiply(payoffs, likelihood_ratios)) - I_market
+        sigma_cur = sigma_cur - alpha_n * Jhat
+        sigma_estim.append(sigma_cur)
+        J_estim.append(Jhat)
+
+        # Stopping Criterion
+        if i == window_size:
+            mean_value = np.mean(J_estim)
+        if i > window_size:
+            removed_value = J_estim.popleft()
+            mean_value = mean_value + (Jhat - removed_value) / window_size
+            if abs(mean_value) < tol1 and abs(Jhat) < tol2:
+                break
+        i += 1
+    print(f'Stopped at iteration n = {i}, where sigma_n = {sigma_cur}')
+    return sigma_estim, i
+
+def RM_Asian_with_IS_opt(n, N, rho, K, S0, T, r, I_market, m,r_opt):
+    if rho > 0.5:
+        sigma_0,i = Sign_changing(K, S0, T, r, I_market, m, sigma_0)
+    else:
+        i=1
+
     sigma_0 = 1
     alpha_0 = 2/(K+S0)
+
+    sigma_estim = np.empty((n,))
+    sigma_cur = sigma_0
     
-    spline_interp = interp1d(sigmas, result, kind='cubic')
+    while i < n:
+        alpha_n = alpha_0 / i ** rho
 
-    if n is not None:
-        sigma_estim = np.empty((n,))
-        sigma_cur = sigma_0
-        
-        for i in range(1, n):
-            alpha_n = alpha_0 / i ** rho
+        # Calculate Jhat with IS
+        r_tilde = r_opt(sigma_cur)
+        simulations = Simulate_Stock_Price(S0, sigma_cur, r_tilde, T, m, N)
+        likelihood_ratios = w(simulations[:, -1], S0, sigma_cur, r, r_tilde, T)
+        avg_stock_prices = np.mean(simulations, axis=1)
+        payoffs = np.exp(-r*T) * np.maximum(K - avg_stock_prices, 0)
+        Jhat = np.mean(np.multiply(payoffs, likelihood_ratios)) - I_market
 
-            # Calculate Jhat with IS
-            r_tilde = spline_interp(sigma_cur)
-            simulations = Simulate_Stock_Price(S0, sigma_cur, r_tilde, T, m, N)
-            likelihood_ratios = w(simulations[:, -1], S0, sigma_cur, r, r_tilde, T)
-            avg_stock_prices = np.mean(simulations, axis=1)
-            payoffs = np.exp(-r*T) * np.maximum(K - avg_stock_prices, 0)
-            Jhat = np.mean(np.multiply(payoffs, likelihood_ratios)) - I_market
+        sigma_cur = sigma_cur - alpha_n * Jhat
+        sigma_estim[i] = sigma_cur
+        i +=1
 
-            sigma_cur = sigma_cur - alpha_n * Jhat
-            sigma_estim[i] = sigma_cur
-    else:
-        sigma_cur = sigma_0
-        sigma_estim = deque([sigma_0])
-        J_estim = deque([])
-        window_size = 1000
-        i=1
-        while True:
-            alpha_n = alpha_0 / i ** rho
-
-            # Calculate Jhat
-            r_tilde = spline_interp(sigma_cur)
-            simulations = Simulate_Stock_Price(S0, sigma_cur, r_tilde, T, m, N)
-            likelihood_ratios = w(simulations[:, -1], S0, sigma_cur, r, r_tilde, T)
-            avg_stock_prices = np.mean(simulations, axis=1)
-            payoffs = np.exp(-r*T) * np.maximum(K - avg_stock_prices, 0)
-            Jhat = np.mean(np.multiply(payoffs, likelihood_ratios)) - I_market
-            sigma_cur = sigma_cur - alpha_n * Jhat
-            sigma_estim.append(sigma_cur)
-            J_estim.append(Jhat)
-
-            # Stopping Criterion
-            if i == window_size:
-                mean_value = np.mean(J_estim)
-            if i > window_size:
-                removed_value = J_estim.popleft()
-                mean_value = mean_value + (Jhat - removed_value) / window_size
-                if abs(mean_value) < 10**(-3) and abs(Jhat) < 10**(-2):
-                    break
-            i += 1
-        print(f'Stopped at iteration n = {i}, where sigma_n = {sigma_cur}')
     return sigma_estim
